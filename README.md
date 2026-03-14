@@ -1,7 +1,7 @@
 # 🧬 Interactive 3D DNA Structural Simulator
 
 [![GitHub Pages](https://img.shields.io/badge/Hosted_on-GitHub_Pages-blue?logo=github)](https://<your-username>.github.io/<your-repo-name>/)
-[![Made with Three.js](https://img.shields.io/badge/Made_with-Three.js-red?logo=three.js)](https://threejs.org/)
+[![Made with Three.js](https://img.shields.io/badge/Made_with-Three.js-black?logo=three.js)](https://threejs.org/)
 
 **[👉 View the Live 3D Simulation Here](https://<your-username>.github.io/<your-repo-name>/)**
 
@@ -12,21 +12,22 @@ This project is an interactive, browser-based 3D educational tool designed to an
 
 Instead of a physical model, this project leverages the power of WebGL and **Three.js** to dynamically generate highly accurate 3D structural models of the three primary conformations of DNA: **A-DNA**, **B-DNA**, and **Z-DNA**. 
 
-**🔥 New Feature:** The model now includes a live API fetch to the **RCSB Protein Data Bank** to load the exact atomic structural map of B-DNA.
+**🔥 Latest Feature Update:** The model now includes a live API fetch to the **RCSB Protein Data Bank**. It maps and calculates midpoints and quaternions to generate a fully realized ball-and-stick chemical model mapping every individual bond and atom.
 
 ## ✨ Features
 * **Real-Time 3D Rendering:** Fully interactive molecule. You can rotate, pan, and zoom to inspect the molecular structure from any angle.
+* **Toggle Auto-Rotation:** Users can pause and resume the automatic spinning of the structure for closer inspection.
 * **Abstract Conformation Mode:** Procedurally generated geometry comparing the structural statistics of:
   * **B-DNA:** The standard, right-handed Watson-Crick double helix.
   * **A-DNA:** The compressed, wider, right-handed helix found in dehydrated conditions.
   * **Z-DNA:** The elongated, left-handed helix with a distinct zig-zag sugar-phosphate backbone.
-* **Detailed Chemical View:** Switch to a fully accurate "Ball-and-Stick" atomic model. By utilizing Three.js `PDBLoader`, the application fetches and plots standard CPK atomic geometries from `1BNA.pdb` (The classic B-DNA dodecamer structure solved by Dickerson and Drew).
-* **Dynamic Educational UI:** An overlay interface displays real-time structural data, biological descriptions, and dynamic legends as you switch modes.
+* **Detailed Chemical Ball-and-Stick View:** Switch to a fully accurate atomic model. By utilizing Three.js `PDBLoader`, the application fetches and plots standard CPK atomic geometries and accurately generates the connecting chemical bonds from `1BNA.pdb` (The classic B-DNA dodecamer structure).
+* **Dynamic Educational UI:** An overlay interface displays real-time structural data, biological descriptions, and dynamic color legends as you switch modes.
 
 ## 🛠️ Technologies Used
 * **HTML5 / CSS3:** For the layout and glass-morphic user interface.
 * **Vanilla JavaScript (ES6+):** For application state logic and dynamic molecular algorithms.
-* **Three.js:** Core 3D library processing the mathematical rotations and handling lighting/materials.
+* **Three.js:** Core 3D library processing the mathematical rotations, bond midpoint vector mathematics, and handling lighting/materials.
 * **RCSB PDB API:** Direct connection to fetch true crystallographic atomic coordinates.
 
 ## 🚀 How to Run Locally
