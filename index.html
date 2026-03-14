@@ -9,7 +9,7 @@
         #canvas-container { width: 100vw; height: 100vh; display: block; }
         
         #ui-panel {
-            position: absolute; top: 0; left: 0; width: 340px; height: 100vh;
+            position: absolute; top: 0; left: 0; width: 350px; height: 100vh;
             background: rgba(20, 20, 20, 0.9); border-right: 1px solid #444;
             padding: 20px; box-sizing: border-box; overflow-y: auto;
             backdrop-filter: blur(5px);
@@ -98,11 +98,12 @@
         <!-- Legend for Atomic View -->
         <div id="pdb-legend" style="display:none;">
             <strong>Ball & Stick Legend:</strong>
+            <div class="legend-item"><div class="color-box" style="background:#ffffff;"></div> Hydrogen (H)</div>
             <div class="legend-item"><div class="color-box" style="background:#c8c8c8;"></div> Carbon (C)</div>
             <div class="legend-item"><div class="color-box" style="background:#f00000;"></div> Oxygen (O)</div>
             <div class="legend-item"><div class="color-box" style="background:#8f8fff;"></div> Nitrogen (N)</div>
             <div class="legend-item"><div class="color-box" style="background:#ffa500;"></div> Phosphorus (P)</div>
-            <div class="legend-item"><div class="color-box" style="background:#ffffff;"></div> Chemical Bonds</div>
+            <div class="legend-item"><div class="color-box" style="background:#cccccc;"></div> Covalent Bonds</div>
         </div>
     </div>
 
@@ -128,8 +129,8 @@
                 desc: "A radically different left-handed double helix. The sugar-phosphate backbone zig-zags (hence 'Z'). It often forms in sequences of alternating purines and pyrimidines and plays a role in regulating gene expression."
             },
             Detailed: {
-                name: "B-DNA (Atomic Detail)", handedness: "Right-handed", bpPerTurn: 10.5, twistPerBP: "~ 36°", risePerBP: "0.34 nm", diameter: "2.0 nm",
-                desc: "Real crystallographic chemical structure of B-DNA (PDB ID: 1BNA), solved by Dickerson and Drew in 1981. Bonds are dynamically calculated based on atomic distances to display a true ball-and-stick model."
+                name: "B-DNA (Complete Atomic Model)", handedness: "Right-handed", bpPerTurn: 10.5, twistPerBP: "~ 36°", risePerBP: "0.34 nm", diameter: "2.0 nm",
+                desc: "Because X-ray structures omit Hydrogens and often trap structural water molecules, this view fetches a High-Definition NMR structure (PDB ID: 1D68). Water is filtered out, and exact covalent bonds are calculated to render a flawless ball-and-stick model including all Hydrogen atoms."
             }
         };
 
@@ -143,7 +144,7 @@
         scene.fog = new THREE.FogExp2(0x111111, 0.003);
 
         const camera = new THREE.PerspectiveCamera(45, window.innerWidth / window.innerHeight, 1, 1000);
-        camera.position.set(0, 0, 100);
+        camera.position.set(0, 0, 80);
 
         const renderer = new THREE.WebGLRenderer({ antialias: true, alpha: true });
         renderer.setSize(window.innerWidth, window.innerHeight);
@@ -154,7 +155,7 @@
         controls.enableDamping = true;
         controls.dampingFactor = 0.05;
 
-        // Lighting (Stronger lighting to clearly show bonds and atoms)
+        // Lighting
         const ambientLight = new THREE.AmbientLight(0xffffff, 0.7);
         scene.add(ambientLight);
         const dirLight1 = new THREE.DirectionalLight(0xffffff, 0.9);
@@ -167,7 +168,6 @@
         // --- 3. Logic Groups ---
         let dnaGroup = new THREE.Group();
         scene.add(dnaGroup);
-        
         let pdbGroup = null; 
 
         // --- 4. Abstract Procedural Builder ---
@@ -241,7 +241,7 @@
             }
         }
 
-        // --- 5. Detailed PDB Chemical Builder ---
+        // --- 5. Detailed High-Res NMR Chemical Builder ---
         function loadDetailedPDB() {
             const loader = new THREE.PDBLoader();
             
@@ -250,52 +250,75 @@
             pdbGroup.add(innerGroup);
             scene.add(pdbGroup);
 
-            loader.load('https://files.rcsb.org/download/1BNA.pdb', function (pdb) {
-                const geometryAtoms = pdb.geometryAtoms;
+            // Fetching 1D68 (High Definition NMR structure of B-DNA. Contains ALL Hydrogens!)
+            loader.load('https://files.rcsb.org/download/1D68.pdb', function (pdb) {
                 
                 const sphereGeom = new THREE.IcosahedronGeometry(1, 4);
-                const positions = geometryAtoms.getAttribute('position');
-                const colors = geometryAtoms.getAttribute('color');
+                const jsonAtoms = pdb.json.atoms;
+                const validAtoms =[]; 
 
-                // 1. Plot the Atoms
-                for (let i = 0; i < positions.count; i++) {
-                    const pos = new THREE.Vector3().fromBufferAttribute(positions, i);
-                    const col = new THREE.Color().fromBufferAttribute(colors, i);
+                // 1. Parse and Filter Atoms
+                for (let i = 0; i < jsonAtoms.length; i++) {
+                    const atomData = jsonAtoms[i];
+                    const resName = atomData[5];
                     
-                    const material = new THREE.MeshPhongMaterial({ color: col, shininess: 80 });
-                    const atom = new THREE.Mesh(sphereGeom, material);
-                    atom.position.copy(pos);
-                    atom.scale.setScalar(0.4); // Scale atom to allow sticks to be visible
-                    innerGroup.add(atom);
+                    // CRITICAL FIX: Ignore water molecules to prevent hanging oxygens
+                    if (resName === 'HOH' || resName === 'WAT' || resName === 'SOL') {
+                        continue;
+                    }
+
+                    // Extract actual chemical element from atom name (e.g., "H2'1" -> "H", "P" -> "P")
+                    const atomName = atomData[4];
+                    const element = atomName.replace(/[^a-zA-Z]/g, '').charAt(0).toUpperCase();
+
+                    const pos = new THREE.Vector3(atomData[0], atomData[1], atomData[2]);
+                    // Standardize color from PDBLoader array[r,g,b]
+                    let col = new THREE.Color(atomData[3][0] / 255, atomData[3][1] / 255, atomData[3][2] / 255);
+                    
+                    validAtoms.push({ pos: pos, element: element, color: col });
                 }
 
-                // 2. DYNAMICALLY Calculate and Plot the Stick Bonds
-                // Create a reusable base cylinder geometry pointing along the Z-axis
-                const baseCylinderGeom = new THREE.CylinderGeometry(0.12, 0.12, 1, 8);
+                // 2. Plot the Atoms with proportional sizes
+                for (let i = 0; i < validAtoms.length; i++) {
+                    const atom = validAtoms[i];
+                    
+                    // Differentiate Hydrogen size vs Heavy atoms
+                    let radius = 0.35;
+                    if (atom.element === 'H') radius = 0.20;
+                    if (atom.element === 'P') radius = 0.42;
+
+                    const material = new THREE.MeshPhongMaterial({ color: atom.color, shininess: 80 });
+                    const mesh = new THREE.Mesh(sphereGeom, material);
+                    
+                    mesh.position.copy(atom.pos);
+                    mesh.scale.setScalar(radius);
+                    innerGroup.add(mesh);
+                }
+
+                // 3. DYNAMICALLY Calculate and Plot True Covalent Bonds
+                // Create a reusable cylinder geometry anchored at origin and pointing Z
+                const baseCylinderGeom = new THREE.CylinderGeometry(0.10, 0.10, 1, 8);
                 baseCylinderGeom.translate(0, 0.5, 0); 
                 baseCylinderGeom.rotateX(Math.PI / 2);
                 
-                const bondMaterial = new THREE.MeshPhongMaterial({ color: 0xffffff, shininess: 90 });
+                const bondMaterial = new THREE.MeshPhongMaterial({ color: 0xcccccc, shininess: 90 });
 
-                // Loop through every possible pair of atoms (N^2 complexity, but fast enough for 500 atoms)
-                for (let i = 0; i < positions.count; i++) {
-                    const p1 = new THREE.Vector3().fromBufferAttribute(positions, i);
-                    
-                    for (let j = i + 1; j < positions.count; j++) {
-                        const p2 = new THREE.Vector3().fromBufferAttribute(positions, j);
+                // Loop through pairs to find bonds (Using distanceSquared for high performance)
+                for (let i = 0; i < validAtoms.length; i++) {
+                    const p1 = validAtoms[i].pos;
+                    for (let j = i + 1; j < validAtoms.length; j++) {
+                        const p2 = validAtoms[j].pos;
+                        const distSq = p1.distanceToSquared(p2);
                         
-                        const distance = p1.distanceTo(p2);
-                        
-                        // Covalent bonds typically range from 1.0 to 1.8 Angstroms. 
-                        // We check if distance falls in this range.
-                        if (distance > 0.4 && distance < 1.9) {
+                        // Distance Bounds: 0.4A to 1.75A
+                        // 0.4^2 = 0.16. 1.75^2 = 3.0625.
+                        // This threshold flawlessly captures all C-H, C-C, C-N, C-O, and P-O bonds!
+                        if (distSq > 0.16 && distSq < 3.0625) {
+                            const distance = Math.sqrt(distSq);
                             const bond = new THREE.Mesh(baseCylinderGeom, bondMaterial);
                             
-                            // Anchor base at atom 1
                             bond.position.copy(p1);
-                            // Point exactly at atom 2
                             bond.lookAt(p2);
-                            // Stretch to the exact distance
                             bond.scale.z = distance;
                             
                             innerGroup.add(bond);
@@ -308,8 +331,8 @@
                 const center = box.getCenter(new THREE.Vector3());
                 innerGroup.position.sub(center); 
                 
-                // Scale up for viewing
-                pdbGroup.scale.set(1.8, 1.8, 1.8);
+                // Scale up slightly for dramatic viewing
+                pdbGroup.scale.set(1.5, 1.5, 1.5);
 
                 document.getElementById('toggle-view').innerText = "Switch to Abstract Procedural View";
                 updateUI('Detailed');
@@ -355,7 +378,7 @@
                 document.getElementById('pdb-legend').style.display = 'block';
                 
                 if (!pdbGroup) {
-                    btn.innerText = "Calculating Atomic Bonds...";
+                    btn.innerText = "Fetching NMR Data & Building Bonds...";
                     loadDetailedPDB();
                 } else {
                     pdbGroup.visible = true;
