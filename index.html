@@ -129,7 +129,7 @@
             },
             Detailed: {
                 name: "B-DNA (Atomic Detail)", handedness: "Right-handed", bpPerTurn: 10.5, twistPerBP: "~ 36°", risePerBP: "0.34 nm", diameter: "2.0 nm",
-                desc: "Real crystallographic chemical structure of B-DNA (PDB ID: 1BNA), solved by Dickerson and Drew in 1981. It beautifully displays the ball-and-stick model connecting every Carbon, Nitrogen, Oxygen, and Phosphorus atom."
+                desc: "Real crystallographic chemical structure of B-DNA (PDB ID: 1BNA), solved by Dickerson and Drew in 1981. Bonds are dynamically calculated based on atomic distances to display a true ball-and-stick model."
             }
         };
 
@@ -168,7 +168,7 @@
         let dnaGroup = new THREE.Group();
         scene.add(dnaGroup);
         
-        let pdbGroup = null; // Will hold the detailed atomic structure
+        let pdbGroup = null; 
 
         // --- 4. Abstract Procedural Builder ---
         const materials = {
@@ -245,7 +245,6 @@
         function loadDetailedPDB() {
             const loader = new THREE.PDBLoader();
             
-            // Wrapper group handles global rotation. Inner group centers the atoms correctly.
             pdbGroup = new THREE.Group(); 
             const innerGroup = new THREE.Group();
             pdbGroup.add(innerGroup);
@@ -253,11 +252,8 @@
 
             loader.load('https://files.rcsb.org/download/1BNA.pdb', function (pdb) {
                 const geometryAtoms = pdb.geometryAtoms;
-                const geometryBonds = pdb.geometryBonds;
-
-                // Create a slightly higher resolution sphere for the atoms
-                const sphereGeom = new THREE.IcosahedronGeometry(1, 4);
                 
+                const sphereGeom = new THREE.IcosahedronGeometry(1, 4);
                 const positions = geometryAtoms.getAttribute('position');
                 const colors = geometryAtoms.getAttribute('color');
 
@@ -269,47 +265,50 @@
                     const material = new THREE.MeshPhongMaterial({ color: col, shininess: 80 });
                     const atom = new THREE.Mesh(sphereGeom, material);
                     atom.position.copy(pos);
-                    // Radius size for atoms (smaller spheres make the sticks pop)
-                    atom.scale.setScalar(0.4); 
+                    atom.scale.setScalar(0.4); // Scale atom to allow sticks to be visible
                     innerGroup.add(atom);
                 }
 
-                // 2. Plot the Stick Bonds (Fully robust visual connection)
-                const positionsBonds = geometryBonds.getAttribute('position');
-                // Brilliant white/light grey makes the bonds highly visible
+                // 2. DYNAMICALLY Calculate and Plot the Stick Bonds
+                // Create a reusable base cylinder geometry pointing along the Z-axis
+                const baseCylinderGeom = new THREE.CylinderGeometry(0.12, 0.12, 1, 8);
+                baseCylinderGeom.translate(0, 0.5, 0); 
+                baseCylinderGeom.rotateX(Math.PI / 2);
+                
                 const bondMaterial = new THREE.MeshPhongMaterial({ color: 0xffffff, shininess: 90 });
 
-                for (let i = 0; i < positionsBonds.count; i += 2) {
-                    const p1 = new THREE.Vector3().fromBufferAttribute(positionsBonds, i);
-                    const p2 = new THREE.Vector3().fromBufferAttribute(positionsBonds, i + 1);
+                // Loop through every possible pair of atoms (N^2 complexity, but fast enough for 500 atoms)
+                for (let i = 0; i < positions.count; i++) {
+                    const p1 = new THREE.Vector3().fromBufferAttribute(positions, i);
                     
-                    const distance = p1.distanceTo(p2);
-                    
-                    // Create a cylinder to act as the stick
-                    // Thick enough to be seen easily (radius 0.15 vs atom radius 0.40)
-                    const cylinderGeom = new THREE.CylinderGeometry(0.15, 0.15, distance, 12);
-                    
-                    // To use lookAt effectively, we translate the cylinder so its base is at the origin (0,0,0)
-                    // and we rotate it so it points natively along the Z-axis
-                    cylinderGeom.translate(0, distance / 2, 0);
-                    cylinderGeom.rotateX(Math.PI / 2);
-                    
-                    const bond = new THREE.Mesh(cylinderGeom, bondMaterial);
-                    
-                    // Place the base of the cylinder exactly at Atom 1
-                    bond.position.copy(p1);
-                    // Aim the top of the cylinder perfectly at Atom 2
-                    bond.lookAt(p2);
-                    
-                    innerGroup.add(bond);
+                    for (let j = i + 1; j < positions.count; j++) {
+                        const p2 = new THREE.Vector3().fromBufferAttribute(positions, j);
+                        
+                        const distance = p1.distanceTo(p2);
+                        
+                        // Covalent bonds typically range from 1.0 to 1.8 Angstroms. 
+                        // We check if distance falls in this range.
+                        if (distance > 0.4 && distance < 1.9) {
+                            const bond = new THREE.Mesh(baseCylinderGeom, bondMaterial);
+                            
+                            // Anchor base at atom 1
+                            bond.position.copy(p1);
+                            // Point exactly at atom 2
+                            bond.lookAt(p2);
+                            // Stretch to the exact distance
+                            bond.scale.z = distance;
+                            
+                            innerGroup.add(bond);
+                        }
+                    }
                 }
 
-                // Center the molecule perfectly to rotate cleanly around its origin axis
+                // Center the molecule perfectly
                 const box = new THREE.Box3().setFromObject(innerGroup);
                 const center = box.getCenter(new THREE.Vector3());
                 innerGroup.position.sub(center); 
                 
-                // Scale up for better viewing
+                // Scale up for viewing
                 pdbGroup.scale.set(1.8, 1.8, 1.8);
 
                 document.getElementById('toggle-view').innerText = "Switch to Abstract Procedural View";
@@ -356,8 +355,8 @@
                 document.getElementById('pdb-legend').style.display = 'block';
                 
                 if (!pdbGroup) {
-                    btn.innerText = "Fetching PDB File & Rendering Sticks...";
-                    loadDetailedPDB(); // Loads and shows PDB
+                    btn.innerText = "Calculating Atomic Bonds...";
+                    loadDetailedPDB();
                 } else {
                     pdbGroup.visible = true;
                     btn.innerText = "Switch to Abstract Procedural View";
@@ -394,7 +393,6 @@
         function animate() {
             requestAnimationFrame(animate);
             
-            // Auto-rotate current visible molecule if enabled
             if (autoRotate) {
                 if (!isDetailedView && dnaGroup) dnaGroup.rotation.y += 0.003;
                 if (isDetailedView && pdbGroup) pdbGroup.rotation.y += 0.003;
