@@ -26,12 +26,19 @@
         }
         select:disabled { opacity: 0.5; cursor: not-allowed; }
 
-        .btn-toggle {
-            width: 100%; padding: 12px; margin-bottom: 20px;
-            background: #2196F3; color: white; border: none; border-radius: 4px; font-size: 0.95rem; font-weight: bold;
-            cursor: pointer; transition: background 0.2s;
+        .btn-group {
+            display: flex; flex-direction: column; gap: 10px; margin-bottom: 20px;
         }
-        .btn-toggle:hover { background: #1976D2; }
+
+        .btn {
+            width: 100%; padding: 12px; border: none; border-radius: 4px; font-size: 0.95rem; font-weight: bold;
+            cursor: pointer; transition: background 0.2s; color: white;
+        }
+        .btn-toggle-view { background: #2196F3; }
+        .btn-toggle-view:hover { background: #1976D2; }
+        
+        .btn-toggle-rot { background: #FF9800; }
+        .btn-toggle-rot:hover { background: #F57C00; }
 
         .info-card { background: #222; padding: 15px; border-radius: 8px; margin-bottom: 20px; border-left: 4px solid #4CAF50;}
         .info-card h2 { margin-top: 0; font-size: 1.1rem; color: #fff; }
@@ -60,7 +67,10 @@
     <div id="ui-panel">
         <h1>DNA Structural Simulator</h1>
         
-        <button id="toggle-view" class="btn-toggle">Switch to Detailed Chemical View</button>
+        <div class="btn-group">
+            <button id="toggle-view" class="btn btn-toggle-view">Switch to Detailed Chemical View</button>
+            <button id="toggle-rotation" class="btn btn-toggle-rot">Stop Auto-Rotation</button>
+        </div>
 
         <div id="procedural-controls">
             <label for="dna-selector">Select Conformation (Abstract):</label>
@@ -92,6 +102,7 @@
             <div class="legend-item"><div class="color-box" style="background:#f00000;"></div> Oxygen (O)</div>
             <div class="legend-item"><div class="color-box" style="background:#8f8fff;"></div> Nitrogen (N)</div>
             <div class="legend-item"><div class="color-box" style="background:#ffa500;"></div> Phosphorus (P)</div>
+            <div class="legend-item"><div class="color-box" style="background:#aaaaaa;"></div> Chemical Bonds</div>
         </div>
     </div>
 
@@ -118,9 +129,13 @@
             },
             Detailed: {
                 name: "B-DNA (Atomic Detail)", handedness: "Right-handed", bpPerTurn: 10.5, twistPerBP: "~ 36°", risePerBP: "0.34 nm", diameter: "2.0 nm",
-                desc: "Real crystallographic chemical structure of B-DNA (PDB ID: 1BNA), solved by Dickerson and Drew in 1981. It displays every Carbon, Nitrogen, Oxygen, and Phosphorus atom, revealing true molecular complexity."
+                desc: "Real crystallographic chemical structure of B-DNA (PDB ID: 1BNA), solved by Dickerson and Drew in 1981. It beautifully displays every atomic bond connecting the Carbon, Nitrogen, Oxygen, and Phosphorus atoms."
             }
         };
+
+        // Global State variables
+        let isDetailedView = false;
+        let autoRotate = true;
 
         // --- 2. 3D Scene Setup ---
         const container = document.getElementById('canvas-container');
@@ -154,7 +169,6 @@
         scene.add(dnaGroup);
         
         let pdbGroup = null; // Will hold the detailed atomic structure
-        let isDetailedView = false;
 
         // --- 4. Abstract Procedural Builder ---
         const materials = {
@@ -171,7 +185,6 @@
             dnaGroup = new THREE.Group();
             scene.add(dnaGroup);
 
-            // Internal params for procedural scaling
             const p = {
                 B: { twist: 34.3, rise: 3.4, dia: 20, tilt: 6 },
                 A: { twist: 32.7, rise: 2.6, dia: 23, tilt: 20 },
@@ -231,54 +244,67 @@
         // --- 5. Detailed PDB Chemical Builder ---
         function loadDetailedPDB() {
             const loader = new THREE.PDBLoader();
-            pdbGroup = new THREE.Group();
+            
+            // Wrapper group handles global rotation. Inner group centers the atoms correctly.
+            pdbGroup = new THREE.Group(); 
+            const innerGroup = new THREE.Group();
+            pdbGroup.add(innerGroup);
             scene.add(pdbGroup);
 
-            // Fetching classic B-DNA (1BNA) from RCSB Protein Data Bank
             loader.load('https://files.rcsb.org/download/1BNA.pdb', function (pdb) {
                 const geometryAtoms = pdb.geometryAtoms;
                 const geometryBonds = pdb.geometryBonds;
 
                 const sphereGeom = new THREE.IcosahedronGeometry(1, 3);
-                const cylinderGeom = new THREE.CylinderGeometry(0.15, 0.15, 1, 8);
-                cylinderGeom.translate(0, 0.5, 0);
-                cylinderGeom.rotateX(Math.PI / 2);
-
+                
                 const positions = geometryAtoms.getAttribute('position');
                 const colors = geometryAtoms.getAttribute('color');
-                const pos = new THREE.Vector3();
-                const col = new THREE.Color();
 
                 // Create Atoms
                 for (let i = 0; i < positions.count; i++) {
-                    pos.fromBufferAttribute(positions, i);
-                    col.fromBufferAttribute(colors, i);
-                    const material = new THREE.MeshPhongMaterial({ color: col, shininess: 60 });
+                    const pos = new THREE.Vector3().fromBufferAttribute(positions, i);
+                    const col = new THREE.Color().fromBufferAttribute(colors, i);
+                    
+                    const material = new THREE.MeshPhongMaterial({ color: col, shininess: 80 });
                     const atom = new THREE.Mesh(sphereGeom, material);
                     atom.position.copy(pos);
-                    // PDBLoader standardizes CPK colors. Scale down atomic spheres slightly to see bonds.
-                    atom.scale.setScalar(0.4);
-                    pdbGroup.add(atom);
+                    // Scale atomic spheres down so bonds between them are clearly visible
+                    atom.scale.setScalar(0.35); 
+                    innerGroup.add(atom);
                 }
 
                 // Create Bonds
                 const positionsBonds = geometryBonds.getAttribute('position');
-                const p1 = new THREE.Vector3(), p2 = new THREE.Vector3();
+                const bondMaterial = new THREE.MeshPhongMaterial({ color: 0xaaaaaa, shininess: 60 });
+
                 for (let i = 0; i < positionsBonds.count; i += 2) {
-                    p1.fromBufferAttribute(positionsBonds, i);
-                    p2.fromBufferAttribute(positionsBonds, i + 1);
-                    const bond = new THREE.Mesh(cylinderGeom, new THREE.MeshPhongMaterial({ color: 0xffffff }));
-                    bond.position.copy(p1);
-                    bond.lookAt(p2);
-                    bond.scale.z = p1.distanceTo(p2);
-                    pdbGroup.add(bond);
+                    const p1 = new THREE.Vector3().fromBufferAttribute(positionsBonds, i);
+                    const p2 = new THREE.Vector3().fromBufferAttribute(positionsBonds, i + 1);
+                    
+                    // Calculate distance for bond length
+                    const distance = p1.distanceTo(p2);
+                    const cylinderGeom = new THREE.CylinderGeometry(0.12, 0.12, distance, 8);
+                    
+                    const bond = new THREE.Mesh(cylinderGeom, bondMaterial);
+                    
+                    // Position at exact midpoint between the two atoms
+                    bond.position.copy(p1).lerp(p2, 0.5);
+                    
+                    // Orient the bond accurately pointing from p1 to p2
+                    const direction = new THREE.Vector3().subVectors(p2, p1).normalize();
+                    const axis = new THREE.Vector3(0, 1, 0); // Default cylinder orientation
+                    bond.quaternion.setFromUnitVectors(axis, direction);
+                    
+                    innerGroup.add(bond);
                 }
 
-                // Center and scale the molecule to match viewport
-                const box = new THREE.Box3().setFromObject(pdbGroup);
+                // Center the molecule perfectly to rotate cleanly around its origin axis
+                const box = new THREE.Box3().setFromObject(innerGroup);
                 const center = box.getCenter(new THREE.Vector3());
-                pdbGroup.position.sub(center);
-                pdbGroup.scale.set(1.5, 1.5, 1.5);
+                innerGroup.position.sub(center); 
+                
+                // Scale up for better viewing
+                pdbGroup.scale.set(1.8, 1.8, 1.8);
 
                 document.getElementById('toggle-view').innerText = "Switch to Abstract Procedural View";
                 updateUI('Detailed');
@@ -324,7 +350,7 @@
                 document.getElementById('pdb-legend').style.display = 'block';
                 
                 if (!pdbGroup) {
-                    btn.innerText = "Fetching PDB File...";
+                    btn.innerText = "Fetching PDB File & Mapping Bonds...";
                     loadDetailedPDB(); // Loads and shows PDB
                 } else {
                     pdbGroup.visible = true;
@@ -343,6 +369,11 @@
             }
         });
 
+        document.getElementById('toggle-rotation').addEventListener('click', (e) => {
+            autoRotate = !autoRotate;
+            e.target.innerText = autoRotate ? "Stop Auto-Rotation" : "Start Auto-Rotation";
+        });
+
         window.addEventListener('resize', () => {
             camera.aspect = window.innerWidth / window.innerHeight;
             camera.updateProjectionMatrix();
@@ -356,9 +387,12 @@
         // --- 7. Animation Loop ---
         function animate() {
             requestAnimationFrame(animate);
-            // Slowly auto-rotate current visible molecule
-            if (!isDetailedView && dnaGroup) dnaGroup.rotation.y += 0.003;
-            if (isDetailedView && pdbGroup) pdbGroup.rotation.y += 0.003;
+            
+            // Auto-rotate current visible molecule if enabled
+            if (autoRotate) {
+                if (!isDetailedView && dnaGroup) dnaGroup.rotation.y += 0.003;
+                if (isDetailedView && pdbGroup) pdbGroup.rotation.y += 0.003;
+            }
 
             controls.update();
             renderer.render(scene, camera);
