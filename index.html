@@ -97,12 +97,12 @@
 
         <!-- Legend for Atomic View -->
         <div id="pdb-legend" style="display:none;">
-            <strong>Atomic CPK Legend:</strong>
+            <strong>Ball & Stick Legend:</strong>
             <div class="legend-item"><div class="color-box" style="background:#c8c8c8;"></div> Carbon (C)</div>
             <div class="legend-item"><div class="color-box" style="background:#f00000;"></div> Oxygen (O)</div>
             <div class="legend-item"><div class="color-box" style="background:#8f8fff;"></div> Nitrogen (N)</div>
             <div class="legend-item"><div class="color-box" style="background:#ffa500;"></div> Phosphorus (P)</div>
-            <div class="legend-item"><div class="color-box" style="background:#aaaaaa;"></div> Chemical Bonds</div>
+            <div class="legend-item"><div class="color-box" style="background:#ffffff;"></div> Chemical Bonds</div>
         </div>
     </div>
 
@@ -129,7 +129,7 @@
             },
             Detailed: {
                 name: "B-DNA (Atomic Detail)", handedness: "Right-handed", bpPerTurn: 10.5, twistPerBP: "~ 36°", risePerBP: "0.34 nm", diameter: "2.0 nm",
-                desc: "Real crystallographic chemical structure of B-DNA (PDB ID: 1BNA), solved by Dickerson and Drew in 1981. It beautifully displays every atomic bond connecting the Carbon, Nitrogen, Oxygen, and Phosphorus atoms."
+                desc: "Real crystallographic chemical structure of B-DNA (PDB ID: 1BNA), solved by Dickerson and Drew in 1981. It beautifully displays the ball-and-stick model connecting every Carbon, Nitrogen, Oxygen, and Phosphorus atom."
             }
         };
 
@@ -154,13 +154,13 @@
         controls.enableDamping = true;
         controls.dampingFactor = 0.05;
 
-        // Lighting
-        const ambientLight = new THREE.AmbientLight(0xffffff, 0.6);
+        // Lighting (Stronger lighting to clearly show bonds and atoms)
+        const ambientLight = new THREE.AmbientLight(0xffffff, 0.7);
         scene.add(ambientLight);
-        const dirLight1 = new THREE.DirectionalLight(0xffffff, 0.8);
+        const dirLight1 = new THREE.DirectionalLight(0xffffff, 0.9);
         dirLight1.position.set(100, 100, 50);
         scene.add(dirLight1);
-        const dirLight2 = new THREE.DirectionalLight(0xffffff, 0.4);
+        const dirLight2 = new THREE.DirectionalLight(0xffffff, 0.6);
         dirLight2.position.set(-100, -50, -50);
         scene.add(dirLight2);
 
@@ -178,7 +178,7 @@
             G: new THREE.MeshPhongMaterial({ color: 0xffcc00 }),
             backbone: new THREE.MeshPhongMaterial({ color: 0xaaaaaa, shininess: 80 })
         };
-        const pairs = [ ['A', 'T'],['T', 'A'], ['C', 'G'],['G', 'C'] ];
+        const pairs = [ ['A', 'T'],['T', 'A'],['C', 'G'],['G', 'C'] ];
 
         function buildAbstractDNA(type) {
             scene.remove(dnaGroup);
@@ -255,12 +255,13 @@
                 const geometryAtoms = pdb.geometryAtoms;
                 const geometryBonds = pdb.geometryBonds;
 
-                const sphereGeom = new THREE.IcosahedronGeometry(1, 3);
+                // Create a slightly higher resolution sphere for the atoms
+                const sphereGeom = new THREE.IcosahedronGeometry(1, 4);
                 
                 const positions = geometryAtoms.getAttribute('position');
                 const colors = geometryAtoms.getAttribute('color');
 
-                // Create Atoms
+                // 1. Plot the Atoms
                 for (let i = 0; i < positions.count; i++) {
                     const pos = new THREE.Vector3().fromBufferAttribute(positions, i);
                     const col = new THREE.Color().fromBufferAttribute(colors, i);
@@ -268,32 +269,37 @@
                     const material = new THREE.MeshPhongMaterial({ color: col, shininess: 80 });
                     const atom = new THREE.Mesh(sphereGeom, material);
                     atom.position.copy(pos);
-                    // Scale atomic spheres down so bonds between them are clearly visible
-                    atom.scale.setScalar(0.35); 
+                    // Radius size for atoms (smaller spheres make the sticks pop)
+                    atom.scale.setScalar(0.4); 
                     innerGroup.add(atom);
                 }
 
-                // Create Bonds
+                // 2. Plot the Stick Bonds (Fully robust visual connection)
                 const positionsBonds = geometryBonds.getAttribute('position');
-                const bondMaterial = new THREE.MeshPhongMaterial({ color: 0xaaaaaa, shininess: 60 });
+                // Brilliant white/light grey makes the bonds highly visible
+                const bondMaterial = new THREE.MeshPhongMaterial({ color: 0xffffff, shininess: 90 });
 
                 for (let i = 0; i < positionsBonds.count; i += 2) {
                     const p1 = new THREE.Vector3().fromBufferAttribute(positionsBonds, i);
                     const p2 = new THREE.Vector3().fromBufferAttribute(positionsBonds, i + 1);
                     
-                    // Calculate distance for bond length
                     const distance = p1.distanceTo(p2);
-                    const cylinderGeom = new THREE.CylinderGeometry(0.12, 0.12, distance, 8);
+                    
+                    // Create a cylinder to act as the stick
+                    // Thick enough to be seen easily (radius 0.15 vs atom radius 0.40)
+                    const cylinderGeom = new THREE.CylinderGeometry(0.15, 0.15, distance, 12);
+                    
+                    // To use lookAt effectively, we translate the cylinder so its base is at the origin (0,0,0)
+                    // and we rotate it so it points natively along the Z-axis
+                    cylinderGeom.translate(0, distance / 2, 0);
+                    cylinderGeom.rotateX(Math.PI / 2);
                     
                     const bond = new THREE.Mesh(cylinderGeom, bondMaterial);
                     
-                    // Position at exact midpoint between the two atoms
-                    bond.position.copy(p1).lerp(p2, 0.5);
-                    
-                    // Orient the bond accurately pointing from p1 to p2
-                    const direction = new THREE.Vector3().subVectors(p2, p1).normalize();
-                    const axis = new THREE.Vector3(0, 1, 0); // Default cylinder orientation
-                    bond.quaternion.setFromUnitVectors(axis, direction);
+                    // Place the base of the cylinder exactly at Atom 1
+                    bond.position.copy(p1);
+                    // Aim the top of the cylinder perfectly at Atom 2
+                    bond.lookAt(p2);
                     
                     innerGroup.add(bond);
                 }
@@ -350,7 +356,7 @@
                 document.getElementById('pdb-legend').style.display = 'block';
                 
                 if (!pdbGroup) {
-                    btn.innerText = "Fetching PDB File & Mapping Bonds...";
+                    btn.innerText = "Fetching PDB File & Rendering Sticks...";
                     loadDetailedPDB(); // Loads and shows PDB
                 } else {
                     pdbGroup.visible = true;
