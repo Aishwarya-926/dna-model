@@ -3,25 +3,35 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Interactive DNA Structural Model: A, B, and Z Forms</title>
+    <title>Interactive DNA Structural Model</title>
     <style>
         body { margin: 0; overflow: hidden; font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif; background-color: #111; color: #fff; }
         #canvas-container { width: 100vw; height: 100vh; display: block; }
         
         #ui-panel {
-            position: absolute; top: 0; left: 0; width: 320px; height: 100vh;
+            position: absolute; top: 0; left: 0; width: 340px; height: 100vh;
             background: rgba(20, 20, 20, 0.9); border-right: 1px solid #444;
             padding: 20px; box-sizing: border-box; overflow-y: auto;
             backdrop-filter: blur(5px);
+            z-index: 10;
         }
 
-        h1 { font-size: 1.2rem; color: #4CAF50; border-bottom: 1px solid #444; padding-bottom: 10px; }
+        h1 { font-size: 1.2rem; color: #4CAF50; border-bottom: 1px solid #444; padding-bottom: 10px; margin-top: 0; }
         
         label { font-weight: bold; color: #aaa; font-size: 0.9rem; }
         select {
-            width: 100%; padding: 10px; margin-top: 5px; margin-bottom: 20px;
+            width: 100%; padding: 10px; margin-top: 5px; margin-bottom: 15px;
             background: #333; color: white; border: 1px solid #555; border-radius: 4px; font-size: 1rem;
+            cursor: pointer;
         }
+        select:disabled { opacity: 0.5; cursor: not-allowed; }
+
+        .btn-toggle {
+            width: 100%; padding: 12px; margin-bottom: 20px;
+            background: #2196F3; color: white; border: none; border-radius: 4px; font-size: 0.95rem; font-weight: bold;
+            cursor: pointer; transition: background 0.2s;
+        }
+        .btn-toggle:hover { background: #1976D2; }
 
         .info-card { background: #222; padding: 15px; border-radius: 8px; margin-bottom: 20px; border-left: 4px solid #4CAF50;}
         .info-card h2 { margin-top: 0; font-size: 1.1rem; color: #fff; }
@@ -31,94 +41,94 @@
         
         .description { font-size: 0.9rem; line-height: 1.5; color: #ccc; margin-top: 15px;}
         
-        #legend { margin-top: 20px; font-size: 0.85rem; }
+        #legend, #pdb-legend { margin-top: 20px; font-size: 0.85rem; }
         .legend-item { display: flex; align-items: center; margin-bottom: 5px; }
-        .color-box { width: 12px; height: 12px; margin-right: 10px; border-radius: 2px; }
+        .color-box { width: 12px; height: 12px; margin-right: 10px; border-radius: 2px; border: 1px solid #555; }
 
         .controls-hint {
-            position: absolute; bottom: 20px; right: 20px;
-            background: rgba(0,0,0,0.5); padding: 10px; border-radius: 5px; font-size: 0.8rem; pointer-events: none;
+            position: absolute; bottom: 20px; right: 20px; z-index: 10;
+            background: rgba(0,0,0,0.6); padding: 10px; border-radius: 5px; font-size: 0.8rem; pointer-events: none;
         }
     </style>
-    <!-- Import Three.js and OrbitControls -->
+    <!-- Import Three.js, OrbitControls, and PDBLoader -->
     <script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js"></script>
     <script src="https://cdn.jsdelivr.net/npm/three@0.128.0/examples/js/controls/OrbitControls.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/three@0.128.0/examples/js/loaders/PDBLoader.js"></script>
 </head>
 <body>
 
     <div id="ui-panel">
         <h1>DNA Structural Simulator</h1>
         
-        <label for="dna-selector">Select Conformation:</label>
-        <select id="dna-selector">
-            <option value="B">B-DNA (Standard, Watson-Crick)</option>
-            <option value="A">A-DNA (Dehydrated)</option>
-            <option value="Z">Z-DNA (Left-Handed)</option>
-        </select>
+        <button id="toggle-view" class="btn-toggle">Switch to Detailed Chemical View</button>
+
+        <div id="procedural-controls">
+            <label for="dna-selector">Select Conformation (Abstract):</label>
+            <select id="dna-selector">
+                <option value="B">B-DNA (Standard, Watson-Crick)</option>
+                <option value="A">A-DNA (Dehydrated)</option>
+                <option value="Z">Z-DNA (Left-Handed)</option>
+            </select>
+        </div>
 
         <div class="info-card" id="info-card">
             <!-- Populated by JS -->
         </div>
 
+        <!-- Legend for Abstract View -->
         <div id="legend">
-            <strong>Legend:</strong>
+            <strong>Base Legend:</strong>
             <div class="legend-item"><div class="color-box" style="background:#ff3333;"></div> Adenine (A)</div>
             <div class="legend-item"><div class="color-box" style="background:#3333ff;"></div> Thymine (T)</div>
             <div class="legend-item"><div class="color-box" style="background:#33cc33;"></div> Cytosine (C)</div>
             <div class="legend-item"><div class="color-box" style="background:#ffcc00;"></div> Guanine (G)</div>
-            <div class="legend-item"><div class="color-box" style="background:#aaaaaa;"></div> Sugar-Phosphate Backbone</div>
+            <div class="legend-item"><div class="color-box" style="background:#aaaaaa;"></div> Backbone</div>
+        </div>
+
+        <!-- Legend for Atomic View -->
+        <div id="pdb-legend" style="display:none;">
+            <strong>Atomic CPK Legend:</strong>
+            <div class="legend-item"><div class="color-box" style="background:#c8c8c8;"></div> Carbon (C)</div>
+            <div class="legend-item"><div class="color-box" style="background:#f00000;"></div> Oxygen (O)</div>
+            <div class="legend-item"><div class="color-box" style="background:#8f8fff;"></div> Nitrogen (N)</div>
+            <div class="legend-item"><div class="color-box" style="background:#ffa500;"></div> Phosphorus (P)</div>
         </div>
     </div>
 
     <div class="controls-hint">
-        Left Click + Drag: <strong>Rotate</strong> | Scroll: <strong>Zoom</strong> | Right Click + Drag: <strong>Pan</strong>
+        Left Click: <strong>Rotate</strong> | Scroll: <strong>Zoom</strong> | Right Click: <strong>Pan</strong>
     </div>
 
     <div id="canvas-container"></div>
 
     <script>
-        // --- 1. Scientific Parameters for DNA Forms ---
-        // Measurements are scaled by 10 for better 3D rendering (e.g., 0.34nm -> 3.4 units)
+        // --- 1. Scientific Data ---
         const dnaData = {
             B: {
-                name: "B-DNA",
-                handedness: "Right-handed",
-                bpPerTurn: 10.5,
-                twistPerBP: 34.3, // degrees
-                risePerBP: 3.4,   // scaled from 0.34 nm
-                diameter: 20.0,   // scaled from 2.0 nm
-                tilt: 6,          // Base pair tilt relative to axis (degrees)
+                name: "B-DNA", handedness: "Right-handed", bpPerTurn: 10.5, twistPerBP: "34.3°", risePerBP: "0.34 nm", diameter: "2.0 nm",
                 desc: "The most common form of DNA found in living cells. Described by Watson and Crick, it features a clear major groove and minor groove, functioning in standard physiological conditions (high humidity)."
             },
             A: {
-                name: "A-DNA",
-                handedness: "Right-handed",
-                bpPerTurn: 11,
-                twistPerBP: 32.7,
-                risePerBP: 2.6,   // Shorter and wider
-                diameter: 23.0,   // Wider
-                tilt: 20,         // Bases are highly tilted
+                name: "A-DNA", handedness: "Right-handed", bpPerTurn: 11, twistPerBP: "32.7°", risePerBP: "0.26 nm", diameter: "2.3 nm",
                 desc: "A wider, compressed right-handed helix. It forms in dehydrated conditions. The base pairs are pushed out from the central axis, leaving a hollow core, and are steeply tilted."
             },
             Z: {
-                name: "Z-DNA",
-                handedness: "Left-handed",
-                bpPerTurn: 12,
-                twistPerBP: -30.0, // Negative for left-handed
-                risePerBP: 3.7,    // Elongated
-                diameter: 18.0,    // Narrower
-                tilt: 7,
-                desc: "A radically different left-handed double helix. The sugar-phosphate backbone zig-zags (hence 'Z'). It often forms in sequences of alternating purines and pyrimidines (like CGCGCG) and plays a role in regulating gene expression."
+                name: "Z-DNA", handedness: "Left-handed", bpPerTurn: 12, twistPerBP: "-30.0°", risePerBP: "0.37 nm", diameter: "1.8 nm",
+                desc: "A radically different left-handed double helix. The sugar-phosphate backbone zig-zags (hence 'Z'). It often forms in sequences of alternating purines and pyrimidines and plays a role in regulating gene expression."
+            },
+            Detailed: {
+                name: "B-DNA (Atomic Detail)", handedness: "Right-handed", bpPerTurn: 10.5, twistPerBP: "~ 36°", risePerBP: "0.34 nm", diameter: "2.0 nm",
+                desc: "Real crystallographic chemical structure of B-DNA (PDB ID: 1BNA), solved by Dickerson and Drew in 1981. It displays every Carbon, Nitrogen, Oxygen, and Phosphorus atom, revealing true molecular complexity."
             }
         };
 
         // --- 2. 3D Scene Setup ---
         const container = document.getElementById('canvas-container');
         const scene = new THREE.Scene();
-        scene.fog = new THREE.FogExp2(0x111111, 0.005);
+        scene.fog = new THREE.FogExp2(0x111111, 0.003);
 
         const camera = new THREE.PerspectiveCamera(45, window.innerWidth / window.innerHeight, 1, 1000);
-        camera.position.set(0, 0, 120);
+        camera.position.set(0, 0, 100);
 
         const renderer = new THREE.WebGLRenderer({ antialias: true, alpha: true });
         renderer.setSize(window.innerWidth, window.innerHeight);
@@ -130,122 +140,156 @@
         controls.dampingFactor = 0.05;
 
         // Lighting
-        const ambientLight = new THREE.AmbientLight(0x404040, 2);
+        const ambientLight = new THREE.AmbientLight(0xffffff, 0.6);
         scene.add(ambientLight);
-        
         const dirLight1 = new THREE.DirectionalLight(0xffffff, 0.8);
         dirLight1.position.set(100, 100, 50);
         scene.add(dirLight1);
-
-        const dirLight2 = new THREE.DirectionalLight(0xaaaaaa, 0.5);
+        const dirLight2 = new THREE.DirectionalLight(0xffffff, 0.4);
         dirLight2.position.set(-100, -50, -50);
         scene.add(dirLight2);
 
-        // --- 3. DNA Generation Logic ---
+        // --- 3. Logic Groups ---
         let dnaGroup = new THREE.Group();
         scene.add(dnaGroup);
+        
+        let pdbGroup = null; // Will hold the detailed atomic structure
+        let isDetailedView = false;
 
+        // --- 4. Abstract Procedural Builder ---
         const materials = {
-            A: new THREE.MeshPhongMaterial({ color: 0xff3333 }), // Adenine
-            T: new THREE.MeshPhongMaterial({ color: 0x3333ff }), // Thymine
-            C: new THREE.MeshPhongMaterial({ color: 0x33cc33 }), // Cytosine
-            G: new THREE.MeshPhongMaterial({ color: 0xffcc00 }), // Guanine
+            A: new THREE.MeshPhongMaterial({ color: 0xff3333 }),
+            T: new THREE.MeshPhongMaterial({ color: 0x3333ff }),
+            C: new THREE.MeshPhongMaterial({ color: 0x33cc33 }),
+            G: new THREE.MeshPhongMaterial({ color: 0xffcc00 }),
             backbone: new THREE.MeshPhongMaterial({ color: 0xaaaaaa, shininess: 80 })
         };
+        const pairs = [ ['A', 'T'],['T', 'A'], ['C', 'G'],['G', 'C'] ];
 
-        const pairs = [ ['A', 'T'],['T', 'A'], ['C', 'G'], ['G', 'C'] ];
-
-        function buildDNA(type) {
-            // Remove old DNA
+        function buildAbstractDNA(type) {
             scene.remove(dnaGroup);
             dnaGroup = new THREE.Group();
             scene.add(dnaGroup);
 
-            const params = dnaData[type];
-            const numBases = 40; // Generate 40 base pairs
-            const totalHeight = numBases * params.risePerBP;
-            let currentY = -totalHeight / 2; // Center the molecule
+            // Internal params for procedural scaling
+            const p = {
+                B: { twist: 34.3, rise: 3.4, dia: 20, tilt: 6 },
+                A: { twist: 32.7, rise: 2.6, dia: 23, tilt: 20 },
+                Z: { twist: -30.0, rise: 3.7, dia: 18, tilt: 7 }
+            }[type];
+
+            const numBases = 40;
+            let currentY = -(numBases * p.rise) / 2;
             let currentRotation = 0;
 
-            const radius = params.diameter / 2;
-            const tiltRad = params.tilt * (Math.PI / 180);
-
-            // Geometries
             const atomGeom = new THREE.SphereGeometry(1.2, 16, 16);
             const bondGeom = new THREE.CylinderGeometry(0.4, 0.4, 1, 12);
             const backboneGeom = new THREE.SphereGeometry(1.6, 16, 16);
 
-            let prevBackbone1 = null;
-            let prevBackbone2 = null;
-
             for (let i = 0; i < numBases; i++) {
-                // Determine base pair
-                let pairIdx;
-                if(type === 'Z') {
-                    // Z-DNA favors alternating C-G
-                    pairIdx = i % 2 === 0 ? 2 : 3; 
-                } else {
-                    pairIdx = Math.floor(Math.random() * 4);
-                }
+                let pairIdx = (type === 'Z') ? (i % 2 === 0 ? 2 : 3) : Math.floor(Math.random() * 4);
                 const bp = pairs[pairIdx];
 
-                // Calculate positions based on helical parameters
                 const angleRad = currentRotation * (Math.PI / 180);
+                const axisDisp = (type === 'A') ? 4.5 : 0; 
                 
-                // For A-DNA, bases are displaced from the central axis.
-                const axisDisplacement = (type === 'A') ? 4.5 : 0; 
-                
-                // Base positions
-                const baseX = Math.cos(angleRad) * axisDisplacement;
-                const baseZ = Math.sin(angleRad) * axisDisplacement;
-
                 const rungGroup = new THREE.Group();
-                rungGroup.position.set(baseX, currentY, baseZ);
-                rungGroup.rotation.y = -angleRad; // Rotate to face outward
-                rungGroup.rotation.x = tiltRad; // Apply tilt
+                rungGroup.position.set(Math.cos(angleRad) * axisDisp, currentY, Math.sin(angleRad) * axisDisp);
+                rungGroup.rotation.y = -angleRad; 
+                rungGroup.rotation.x = p.tilt * (Math.PI / 180); 
 
-                // Calculate backbone offset radius
-                const bbRadius = radius; 
-                
-                // Create Bases (Left and Right)
                 const leftBase = new THREE.Mesh(atomGeom, materials[bp[0]]);
-                leftBase.position.set(-bbRadius/2, 0, 0);
+                leftBase.position.set(-p.dia/4, 0, 0);
                 rungGroup.add(leftBase);
 
                 const rightBase = new THREE.Mesh(atomGeom, materials[bp[1]]);
-                rightBase.position.set(bbRadius/2, 0, 0);
+                rightBase.position.set(p.dia/4, 0, 0);
                 rungGroup.add(rightBase);
 
-                // Hydrogen Bond connecting them
                 const hBond = new THREE.Mesh(bondGeom, new THREE.MeshPhongMaterial({color: 0xffffff, transparent:true, opacity:0.5}));
-                hBond.scale.set(1, bbRadius, 1);
+                hBond.scale.set(1, p.dia/2, 1);
                 hBond.rotation.z = Math.PI / 2;
                 rungGroup.add(hBond);
 
-                // Add Backbones
                 const bb1 = new THREE.Mesh(backboneGeom, materials.backbone);
-                bb1.position.set(-bbRadius, 0, 0);
+                bb1.position.set(-p.dia/2, 0, 0);
                 rungGroup.add(bb1);
 
                 const bb2 = new THREE.Mesh(backboneGeom, materials.backbone);
-                bb2.position.set(bbRadius, 0, 0);
+                bb2.position.set(p.dia/2, 0, 0);
                 rungGroup.add(bb2);
 
                 dnaGroup.add(rungGroup);
 
-                // Increment rotation and height
-                // Z-DNA has a distinct zig-zag, simulated here by alternating twist slightly
-                let twist = params.twistPerBP;
-                if (type === 'Z') {
-                    twist = i % 2 === 0 ? -10 : -50; // Averages to -30, creates zig-zag
-                }
-
+                let twist = p.twist;
+                if (type === 'Z') twist = i % 2 === 0 ? -10 : -50;
                 currentRotation += twist;
-                currentY += params.risePerBP;
+                currentY += p.rise;
             }
         }
 
-        // --- 4. UI Updating Logic ---
+        // --- 5. Detailed PDB Chemical Builder ---
+        function loadDetailedPDB() {
+            const loader = new THREE.PDBLoader();
+            pdbGroup = new THREE.Group();
+            scene.add(pdbGroup);
+
+            // Fetching classic B-DNA (1BNA) from RCSB Protein Data Bank
+            loader.load('https://files.rcsb.org/download/1BNA.pdb', function (pdb) {
+                const geometryAtoms = pdb.geometryAtoms;
+                const geometryBonds = pdb.geometryBonds;
+
+                const sphereGeom = new THREE.IcosahedronGeometry(1, 3);
+                const cylinderGeom = new THREE.CylinderGeometry(0.15, 0.15, 1, 8);
+                cylinderGeom.translate(0, 0.5, 0);
+                cylinderGeom.rotateX(Math.PI / 2);
+
+                const positions = geometryAtoms.getAttribute('position');
+                const colors = geometryAtoms.getAttribute('color');
+                const pos = new THREE.Vector3();
+                const col = new THREE.Color();
+
+                // Create Atoms
+                for (let i = 0; i < positions.count; i++) {
+                    pos.fromBufferAttribute(positions, i);
+                    col.fromBufferAttribute(colors, i);
+                    const material = new THREE.MeshPhongMaterial({ color: col, shininess: 60 });
+                    const atom = new THREE.Mesh(sphereGeom, material);
+                    atom.position.copy(pos);
+                    // PDBLoader standardizes CPK colors. Scale down atomic spheres slightly to see bonds.
+                    atom.scale.setScalar(0.4);
+                    pdbGroup.add(atom);
+                }
+
+                // Create Bonds
+                const positionsBonds = geometryBonds.getAttribute('position');
+                const p1 = new THREE.Vector3(), p2 = new THREE.Vector3();
+                for (let i = 0; i < positionsBonds.count; i += 2) {
+                    p1.fromBufferAttribute(positionsBonds, i);
+                    p2.fromBufferAttribute(positionsBonds, i + 1);
+                    const bond = new THREE.Mesh(cylinderGeom, new THREE.MeshPhongMaterial({ color: 0xffffff }));
+                    bond.position.copy(p1);
+                    bond.lookAt(p2);
+                    bond.scale.z = p1.distanceTo(p2);
+                    pdbGroup.add(bond);
+                }
+
+                // Center and scale the molecule to match viewport
+                const box = new THREE.Box3().setFromObject(pdbGroup);
+                const center = box.getCenter(new THREE.Vector3());
+                pdbGroup.position.sub(center);
+                pdbGroup.scale.set(1.5, 1.5, 1.5);
+
+                document.getElementById('toggle-view').innerText = "Switch to Abstract Procedural View";
+                updateUI('Detailed');
+
+            }, undefined, function (error) {
+                console.error("Failed to load PDB:", error);
+                document.getElementById('toggle-view').innerText = "Error Loading Data! Try again.";
+            });
+        }
+
+        // --- 6. UI Logic & Event Listeners ---
         function updateUI(type) {
             const data = dnaData[type];
             document.getElementById('info-card').innerHTML = `
@@ -253,18 +297,50 @@
                 <div class="data-grid">
                     <div class="data-item"><span>Handedness:</span> <strong>${data.handedness}</strong></div>
                     <div class="data-item"><span>Base Pairs / Turn:</span> <strong>${data.bpPerTurn}</strong></div>
-                    <div class="data-item"><span>Helix Diameter:</span> <strong>${(data.diameter / 10).toFixed(1)} nm</strong></div>
-                    <div class="data-item"><span>Rise per Base Pair:</span> <strong>${(data.risePerBP / 10).toFixed(2)} nm</strong></div>
+                    <div class="data-item"><span>Helix Diameter:</span> <strong>${data.diameter}</strong></div>
+                    <div class="data-item"><span>Rise per Base Pair:</span> <strong>${data.risePerBP}</strong></div>
+                    <div class="data-item"><span>Twist per Base Pair:</span> <strong>${data.twistPerBP}</strong></div>
                 </div>
                 <div class="description">${data.desc}</div>
             `;
         }
 
-        // --- 5. Event Listeners & Initialization ---
         document.getElementById('dna-selector').addEventListener('change', (e) => {
-            const type = e.target.value;
-            buildDNA(type);
-            updateUI(type);
+            if(!isDetailedView) {
+                buildAbstractDNA(e.target.value);
+                updateUI(e.target.value);
+            }
+        });
+
+        document.getElementById('toggle-view').addEventListener('click', (e) => {
+            isDetailedView = !isDetailedView;
+            const btn = e.target;
+            const selector = document.getElementById('dna-selector');
+
+            if (isDetailedView) {
+                selector.disabled = true;
+                dnaGroup.visible = false;
+                document.getElementById('legend').style.display = 'none';
+                document.getElementById('pdb-legend').style.display = 'block';
+                
+                if (!pdbGroup) {
+                    btn.innerText = "Fetching PDB File...";
+                    loadDetailedPDB(); // Loads and shows PDB
+                } else {
+                    pdbGroup.visible = true;
+                    btn.innerText = "Switch to Abstract Procedural View";
+                    updateUI('Detailed');
+                }
+            } else {
+                selector.disabled = false;
+                if(pdbGroup) pdbGroup.visible = false;
+                dnaGroup.visible = true;
+                document.getElementById('legend').style.display = 'block';
+                document.getElementById('pdb-legend').style.display = 'none';
+                
+                btn.innerText = "Switch to Detailed Chemical View";
+                updateUI(selector.value);
+            }
         });
 
         window.addEventListener('resize', () => {
@@ -273,23 +349,20 @@
             renderer.setSize(window.innerWidth, window.innerHeight);
         });
 
-        // Init App
-        buildDNA('B');
+        // Initialize App
+        buildAbstractDNA('B');
         updateUI('B');
 
-        // --- 6. Animation Loop ---
+        // --- 7. Animation Loop ---
         function animate() {
             requestAnimationFrame(animate);
-            
-            // Slowly auto-rotate the whole molecule for a nice viewing effect
-            if (dnaGroup) {
-                dnaGroup.rotation.y += 0.005;
-            }
+            // Slowly auto-rotate current visible molecule
+            if (!isDetailedView && dnaGroup) dnaGroup.rotation.y += 0.003;
+            if (isDetailedView && pdbGroup) pdbGroup.rotation.y += 0.003;
 
             controls.update();
             renderer.render(scene, camera);
         }
-
         animate();
     </script>
 </body>
