@@ -1,7 +1,7 @@
 # 🧬 Interactive 3D DNA Structural Simulator
 
 [![GitHub Pages](https://img.shields.io/badge/Hosted_on-GitHub_Pages-blue?logo=github)](https://<your-username>.github.io/<your-repo-name>/)
-[![Made with Three.js](https://img.shields.io/badge/Made_with-Three.js-black?logo=three.js)](https://threejs.org/)
+[![Made with Three.js](https://img.shields.io/badge/Made_with-Three.js-red?logo=three.js)](https://threejs.org/)
 
 **[👉 View the Live 3D Simulation Here](https://aishwarya-926.github.io/dna-model/)**
 
